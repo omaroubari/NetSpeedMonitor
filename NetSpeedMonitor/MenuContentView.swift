@@ -1,76 +1,89 @@
 import SwiftUI
-import os.log
-
-public var logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "elegracer")
 
 struct MenuContentView: View {
-    @EnvironmentObject var menuBarState: MenuBarState
-    
+    @EnvironmentObject private var monitor: MenuBarState
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Section {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Toggle("Start at Login", isOn: $menuBarState.autoLaunchEnabled)
-                        .toggleStyle(.button)
-                        .onChange(of: menuBarState.autoLaunchEnabled, initial: false) {oldState, newState in
-                            logger.info("Toggle::StartAtLogin: oldState：\(oldState), newState: \(newState)")
-                        }
-                }.fixedSize()
-            }
-            
-            Divider()
-            
-            Section {
-                HStack {
-                    ForEach(NetSpeedUpdateInterval.allCases) { interval in
-                        Toggle(
-                            interval.displayName,
-                            isOn: Binding(
-                                get: { menuBarState.netSpeedUpdateInterval == interval },
-                                set: { if $0 { menuBarState.netSpeedUpdateInterval = interval } }
-                            )
-                        )
-                        .toggleStyle(.button)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Network Pulse")
+                            .font(.headline)
+                        StatusLabel(status: monitor.status)
+                            .font(.caption)
                     }
+                    Spacer()
+                    Button {
+                        monitor.toggleMonitoring()
+                    } label: {
+                        Image(systemName: monitor.isPaused ? "play.fill" : "pause.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(monitor.isPaused ? "Resume monitoring" : "Pause monitoring")
                 }
-            } header: {
-                Text("Update Interval")
-            }
-            
-            Divider()
-            
-            Section {
-                Button("Open Activity Monitor", action: onClickOpenActivityMonitor)
-            }
-            
-            Divider()
-            
-            Section {
-                Button("Quit") {
-                    NSApplication.shared.terminate(nil)
+
+                HStack(spacing: 12) {
+                    MenuSpeedValue(title: "Download", speed: monitor.speeds.download, color: .blue)
+                    Divider().frame(height: 42)
+                    MenuSpeedValue(title: "Upload", speed: monitor.speeds.upload, color: .mint)
                 }
+
+                TrafficChartView(samples: monitor.samples(in: .fiveMinutes), compact: true)
+                    .frame(height: 82)
             }
+            .padding(16)
+
+            Divider()
+
+            VStack(spacing: 8) {
+                Button {
+                    openWindow(id: "dashboard")
+                    NSApp.activate(ignoringOtherApps: true)
+                } label: {
+                    Label("Open Dashboard", systemImage: "rectangle.3.group")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Button(action: AppActions.openActivityMonitor) {
+                    Label("Open Activity Monitor", systemImage: "waveform.path.ecg")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Divider()
+
+                Button("Quit Network Pulse") { NSApplication.shared.terminate(nil) }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(12)
         }
-        .fixedSize()
+        .frame(width: 320)
     }
-    
-    private func onClickOpenActivityMonitor() {
-        let bundleID = "com.apple.ActivityMonitor"
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            
-            NSWorkspace.shared.openApplication(at: appURL,
-                                               configuration: config,
-                                               completionHandler: { app, error in
-                if let error = error {
-                    logger.warning("Open Activity Monitor failed: \(error.localizedDescription)")
-                } else {
-                    logger.info("Open Activity Monitor succeeded.")
-                }
-            })
-        } else {
-            logger.warning("Cannot find Activity Monitor.")
+}
+
+private struct MenuSpeedValue: View {
+    let title: String
+    let speed: NetworkSpeed
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 6, height: 6)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(speed.formatted)
+                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

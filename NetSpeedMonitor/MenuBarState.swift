@@ -1,142 +1,246 @@
-import SwiftUI
+import AppKit
 import Combine
 import ServiceManagement
+import SwiftUI
 
-enum NetSpeedUpdateInterval: Int, CaseIterable, Identifiable {
-    case Sec1 = 1
-    case Sec2 = 2
-    case Sec5 = 5
-    case Sec10 = 10
-    case Sec30 = 30
+@MainActor
+final class MenuBarState: ObservableObject {
+    static let automaticInterface = "automatic"
 
-    var id: Int { self.rawValue }
-
-    var displayName: String {
-        switch self {
-        case .Sec1: return "1s"
-        case .Sec2: return "2s"
-        case .Sec5: return "5s"
-        case .Sec10: return "10s"
-        case .Sec30: return "30s"
-        }
-    }
-}
-
-class MenuBarState: ObservableObject {
-    @AppStorage("AutoLaunchEnabled") var autoLaunchEnabled: Bool = false {
+    @AppStorage("AutoLaunchEnabled") var autoLaunchEnabled = false {
         didSet { updateAutoLaunchStatus() }
     }
-    @AppStorage("NetSpeedUpdateInterval") var netSpeedUpdateInterval: NetSpeedUpdateInterval = .Sec1 {
-        didSet { updateNetSpeedUpdateIntervalStatus() }
+    @AppStorage(DockIconController.preferenceKey) var showDockIcon = false {
+        didSet { DockIconController.applyPreference() }
     }
-    @Published var menuText = "↑ \(String(format: "%6.2lf", 0)) \(" B")/s\n↓ \(String(format: "%6.2lf", 0)) \(" B")/s"
+    @AppStorage("NetSpeedUpdateInterval") var netSpeedUpdateInterval = NetSpeedUpdateInterval.oneSecond {
+        didSet { restartTimer() }
+    }
+    @AppStorage("SelectedInterface") var selectedInterface = automaticInterface {
+        didSet {
+            hasReceivedBaseline = false
+            lastSampleDate = nil
+            status = .warmingUp
+            netTrafficStat.reset()
+        }
+    }
 
-    var currentIcon: NSImage {
-        return MenuBarIconGenerator.generateIcon(text: menuText)
+    @Published private(set) var speeds = NetworkSpeeds.zero
+    @Published private(set) var samples: [NetworkSample] = []
+    @Published private(set) var interfaceReadings: [InterfaceReading] = []
+    @Published private(set) var status = MonitorStatus.warmingUp
+    @Published private(set) var lastUpdated: Date?
+    @Published private(set) var sessionUploadedBytes = 0.0
+    @Published private(set) var sessionDownloadedBytes = 0.0
+    @Published private(set) var peakUpload = NetworkSpeed.zero
+    @Published private(set) var peakDownload = NetworkSpeed.zero
+    @Published private(set) var sessionStarted = Date()
+    @Published private(set) var indicatorImage = MenuBarIconGenerator.generateIcon(
+        speeds: .zero,
+        uploadActivity: 0,
+        downloadActivity: 0
+    )
+
+    var isPaused: Bool { status == .paused }
+    var accessibilityLabel: String {
+        "Upload \(speeds.upload.accessibilityText), download \(speeds.download.accessibilityText)"
     }
+    var availableInterfaceNames: [String] { interfaceReadings.map(\.name) }
 
     private var timer: Timer?
-    private var netTrafficStat = NetTrafficStatReceiver()
-
-    private var uploadSpeed: Double = 0.0
-    private var downloadSpeed: Double = 0.0
-    private var uploadMetric: String = " B"
-    private var downloadMetric: String = " B"
-    private let speedMetrics: [String] = [" B", "KB", "MB", "GB", "TB"]
-
-    private func currentAutoLaunchStatus() -> Bool {
-        let service = SMAppService.mainApp
-        let status = service.status
-        return status == .enabled
-    }
-
-    private func updateAutoLaunchStatus() {
-        let service = SMAppService.mainApp
-
-        do {
-            if autoLaunchEnabled {
-                if service.status == .notFound || service.status == .notRegistered {
-                    try service.register()
-                }
-            } else {
-                if service.status == .enabled {
-                    try service.unregister()
-                }
-            }
-            logger.info("updateAutoLaunchStatus succeeded, autoLaunchEnabled: \(String(self.autoLaunchEnabled)), service.enabled: \(String(service.status == .enabled))")
-        } catch {
-            logger.warning("updateAutoLaunchStatus failed: \(error.localizedDescription), autoLaunchEnabled: \(String(self.autoLaunchEnabled)), service.enabled: \(String(service.status == .enabled))")
-            autoLaunchEnabled = currentAutoLaunchStatus()
-        }
-    }
-
-    private func updateNetSpeedUpdateIntervalStatus() {
-        logger.info("netSpeedUpdateInterval, \(self.netSpeedUpdateInterval.displayName)")
-        self.stopTimer()
-        self.startTimer()
-    }
-
-    private func startTimer() {
-        let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(self.netSpeedUpdateInterval.rawValue), repeats: true) { _ in
-
-            guard let netTrafficStatMap = self.netTrafficStat.getNetTrafficStatMap() else {
-                return
-            }
-
-            var maxDownloadSpeed: Double = 0.0
-            var maxUploadSpeed: Double = 0.0
-            for (_, stat) in netTrafficStatMap {
-                if let netStat = stat as? NetTrafficStatOC {
-                    let down = netStat.ibytes_per_sec.doubleValue
-                    let up = netStat.obytes_per_sec.doubleValue
-                    if down > maxDownloadSpeed {
-                        maxDownloadSpeed = down
-                    }
-                    if up > maxUploadSpeed {
-                        maxUploadSpeed = up
-                    }
-                }
-            }
-
-            self.downloadSpeed = maxDownloadSpeed
-            self.uploadSpeed = maxUploadSpeed
-            self.downloadMetric = self.speedMetrics.first!
-            self.uploadMetric = self.speedMetrics.first!
-            for metric in self.speedMetrics.dropFirst() {
-                if self.downloadSpeed > 1000.0 {
-                    self.downloadSpeed /= 1024.0
-                    self.downloadMetric = metric
-                }
-                if self.uploadSpeed > 1000.0 {
-                    self.uploadSpeed /= 1024.0
-                    self.uploadMetric = metric
-                }
-            }
-            self.menuText = "↑ \(String(format: "%6.2lf", self.uploadSpeed)) \(self.uploadMetric)/s\n↓ \(String(format: "%6.2lf", self.downloadSpeed)) \(self.downloadMetric)/s"
-            
-            logger.info("deltaIn: \(String(format:"%.6f", self.downloadSpeed)) \(self.downloadMetric)/s, deltaOut: \(String(format:"%.6f", self.uploadSpeed)) \(self.uploadMetric)/s")
-        }
-        RunLoop.current.add(timer, forMode: .common)
-        self.timer = timer
-        logger.info("startTimer")
-    }
-
-    private func stopTimer() {
-        self.timer?.invalidate()
-        self.timer = nil
-        logger.info("stopTimer")
-    }
+    private var activityAnimationTimer: Timer?
+    private let netTrafficStat = NetTrafficStatReceiver()
+    private var displayedUploadActivity = 0.0
+    private var displayedDownloadActivity = 0.0
+    private var hasReceivedBaseline = false
+    private var lastSampleDate: Date?
 
     init() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             self.autoLaunchEnabled = self.currentAutoLaunchStatus()
             self.startTimer()
         }
     }
 
     deinit {
-        DispatchQueue.main.async {
-            self.stopTimer()
+        timer?.invalidate()
+        activityAnimationTimer?.invalidate()
+    }
+
+    func toggleMonitoring() {
+        isPaused ? resume() : pause()
+    }
+
+    func pause() {
+        timer?.invalidate()
+        timer = nil
+        status = .paused
+    }
+
+    func resume() {
+        status = .warmingUp
+        hasReceivedBaseline = false
+        lastSampleDate = nil
+        netTrafficStat.reset()
+        startTimer()
+    }
+
+    func clearSession() {
+        samples.removeAll()
+        sessionUploadedBytes = 0
+        sessionDownloadedBytes = 0
+        peakUpload = .zero
+        peakDownload = .zero
+        sessionStarted = Date()
+    }
+
+    func samples(in range: HistoryRange) -> [NetworkSample] {
+        let cutoff = Date().addingTimeInterval(-range.duration)
+        return samples.filter { $0.date >= cutoff }
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        sampleNetwork()
+        let timer = Timer(timeInterval: TimeInterval(netSpeedUpdateInterval.rawValue), repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.sampleNetwork() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        logger.info("Network monitor started")
+    }
+
+    private func restartTimer() {
+        guard status != .paused else { return }
+        hasReceivedBaseline = false
+        lastSampleDate = nil
+        netTrafficStat.reset()
+        status = .warmingUp
+        startTimer()
+    }
+
+    private func sampleNetwork() {
+        guard let map = netTrafficStat.getNetTrafficStatMap() else {
+            status = .unavailable
+            return
+        }
+
+        let readings: [InterfaceReading] = map.compactMap { key, value in
+            guard let name = key as? String, let stat = value as? NetTrafficStatOC else { return nil }
+            return InterfaceReading(
+                name: name,
+                speeds: NetworkSpeeds(
+                    upload: NetworkSpeed(bytesPerSecond: stat.obytes_per_sec.doubleValue),
+                    download: NetworkSpeed(bytesPerSecond: stat.ibytes_per_sec.doubleValue)
+                )
+            )
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
+        interfaceReadings = readings
+        if selectedInterface != Self.automaticInterface,
+           !readings.contains(where: { $0.name == selectedInterface }) {
+            selectedInterface = Self.automaticInterface
+        }
+
+        let nextSpeeds: NetworkSpeeds
+        if let selected = readings.first(where: { $0.name == selectedInterface }) {
+            nextSpeeds = selected.speeds
+        } else {
+            nextSpeeds = NetworkSpeeds(
+                upload: NetworkSpeed(bytesPerSecond: readings.map(\.speeds.upload.bytesPerSecond).max() ?? 0),
+                download: NetworkSpeed(bytesPerSecond: readings.map(\.speeds.download.bytesPerSecond).max() ?? 0)
+            )
+        }
+
+        speeds = nextSpeeds
+        lastUpdated = Date()
+        if hasReceivedBaseline {
+            status = .monitoring
+            record(nextSpeeds)
+        } else {
+            hasReceivedBaseline = true
+            lastSampleDate = lastUpdated
+            status = .warmingUp
+        }
+        animateActivityMeters()
+    }
+
+    private func record(_ speeds: NetworkSpeeds) {
+        let now = Date()
+        samples.append(NetworkSample(
+            date: now,
+            uploadBytesPerSecond: speeds.upload.bytesPerSecond,
+            downloadBytesPerSecond: speeds.download.bytesPerSecond
+        ))
+        samples.removeAll { now.timeIntervalSince($0.date) > HistoryRange.oneHour.duration }
+
+        let expectedInterval = Double(netSpeedUpdateInterval.rawValue)
+        let seconds = min(now.timeIntervalSince(lastSampleDate ?? now), expectedInterval * 2)
+        lastSampleDate = now
+        sessionUploadedBytes += speeds.upload.bytesPerSecond * seconds
+        sessionDownloadedBytes += speeds.download.bytesPerSecond * seconds
+        if speeds.upload.bytesPerSecond > peakUpload.bytesPerSecond { peakUpload = speeds.upload }
+        if speeds.download.bytesPerSecond > peakDownload.bytesPerSecond { peakDownload = speeds.download }
+    }
+
+    private func currentAutoLaunchStatus() -> Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    private func updateAutoLaunchStatus() {
+        let service = SMAppService.mainApp
+        do {
+            if autoLaunchEnabled, service.status != .enabled {
+                try service.register()
+            } else if !autoLaunchEnabled, service.status == .enabled {
+                try service.unregister()
+            }
+        } catch {
+            logger.warning("Could not update launch-at-login: \(error.localizedDescription)")
+            autoLaunchEnabled = currentAutoLaunchStatus()
+        }
+    }
+
+    private func animateActivityMeters() {
+        activityAnimationTimer?.invalidate()
+        let targetUpload = speeds.upload.activityLevel
+        let targetDownload = speeds.download.activityLevel
+        let startUpload = displayedUploadActivity
+        let startDownload = displayedDownloadActivity
+
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            displayedUploadActivity = targetUpload
+            displayedDownloadActivity = targetDownload
+            updateIndicatorImage()
+            return
+        }
+
+        let startTime = Date()
+        let animationTimer = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self else { timer.invalidate(); return }
+                let progress = min(Date().timeIntervalSince(startTime) / 0.3, 1)
+                let eased = 1 - pow(1 - progress, 3)
+                self.displayedUploadActivity = startUpload + (targetUpload - startUpload) * eased
+                self.displayedDownloadActivity = startDownload + (targetDownload - startDownload) * eased
+                self.updateIndicatorImage()
+                if progress >= 1 {
+                    timer.invalidate()
+                    self.activityAnimationTimer = nil
+                }
+            }
+        }
+        activityAnimationTimer = animationTimer
+        RunLoop.main.add(animationTimer, forMode: .common)
+    }
+
+    private func updateIndicatorImage() {
+        indicatorImage = MenuBarIconGenerator.generateIcon(
+            speeds: speeds,
+            uploadActivity: displayedUploadActivity,
+            downloadActivity: displayedDownloadActivity
+        )
     }
 }
