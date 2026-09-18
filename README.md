@@ -1,16 +1,27 @@
-# NetSpeedMonitor
+# Network Pulse
 
-Just a minimal menu bar macOS app.
+Network Pulse is a native SwiftUI macOS app for viewing live upload and download traffic. It includes a full dashboard and a compact menu-bar companion.
 
 It runs `sysctl` with c interface in a repeating timer.
 
 Use at your own risk.
 
-# Functions
+# Features
 
-1. Start at login.
-2. Set different update intervals, now with 5 options: 1s, 2s, 5s, 10s, 30s.
-3. Open Activity Monitor. When you notice abnormal network traffic, you could open Activity Monitor to check what process is the cause.
+1. Live upload and download speeds in the Dock app and menu bar.
+2. Real-time traffic charts with 5-minute, 15-minute, and 1-hour ranges.
+3. Session transfer totals and peak speeds.
+4. Automatic or manual network-interface selection.
+5. Start at login and configurable 1s, 2s, 5s, 10s, or 30s updates.
+6. Pause/resume monitoring, clear session history, and open Activity Monitor.
+
+# Build and run
+
+Open `NetSpeedMonitor.xcodeproj` in Xcode, or run:
+
+```sh
+./script/build_and_run.sh
+```
 
 # Note
 
