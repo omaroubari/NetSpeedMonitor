@@ -91,9 +91,14 @@ private struct OverviewView: View {
                             Label("Recent traffic", systemImage: "waveform.path.ecg")
                                 .font(.headline)
                             Spacer()
-                            TrafficLegend()
+                            TrafficLegend(isPaused: monitor.isPaused)
                         }
-                        TrafficChartView(samples: monitor.samples(in: .fiveMinutes), compact: true)
+                        TrafficChartView(
+                            samples: monitor.samples(in: .fiveMinutes),
+                            range: .fiveMinutes,
+                            isPaused: monitor.isPaused,
+                            compact: true
+                        )
                             .frame(height: 190)
                     }
                     .padding(8)
@@ -136,13 +141,17 @@ private struct HistoryView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
-                            TrafficLegend()
+                            TrafficLegend(isPaused: monitor.isPaused)
                             Spacer()
                             Text("\(monitor.samples(in: range).count) samples")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        TrafficChartView(samples: monitor.samples(in: range))
+                        TrafficChartView(
+                            samples: monitor.samples(in: range),
+                            range: range,
+                            isPaused: monitor.isPaused
+                        )
                             .frame(minHeight: 320)
                     }
                     .padding(8)
@@ -243,10 +252,14 @@ struct StatusLabel: View {
 }
 
 struct TrafficLegend: View {
+    let isPaused: Bool
+
     var body: some View {
         HStack(spacing: 12) {
-            Label("Download", systemImage: "circle.fill").foregroundStyle(.blue)
-            Label("Upload", systemImage: "circle.fill").foregroundStyle(.mint)
+            Label("Download", systemImage: "circle.fill")
+                .foregroundStyle(isPaused ? .yellow : .blue)
+            Label("Upload", systemImage: "circle.fill")
+                .foregroundStyle(isPaused ? .yellow.opacity(0.72) : .mint)
         }
         .font(.caption)
     }

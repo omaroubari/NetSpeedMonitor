@@ -3,58 +3,73 @@ import SwiftUI
 struct MenuContentView: View {
     @EnvironmentObject private var monitor: MenuBarState
     @Environment(\.openWindow) private var openWindow
+    @State private var isPauseButtonHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Network Pulse")
-                            .font(.headline)
-                        StatusLabel(status: monitor.status)
-                            .font(.caption)
-                    }
+                    Text("Network Pulse")
+                        .font(.headline)
                     Spacer()
                     Button {
                         monitor.toggleMonitoring()
                     } label: {
                         Image(systemName: monitor.isPaused ? "play.fill" : "pause.fill")
+                            .frame(width: 24, height: 24)
+                            .background {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(
+                                        isPauseButtonHovered
+                                            ? Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+                                            : Color.clear
+                                    )
+                            }
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
+                    .onHover { isPauseButtonHovered = $0 }
                     .help(monitor.isPaused ? "Resume monitoring" : "Pause monitoring")
                 }
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     MenuSpeedValue(title: "Download", speed: monitor.speeds.download, color: .blue)
-                    Divider().frame(height: 42)
+                    Divider().frame(height: 34)
                     MenuSpeedValue(title: "Upload", speed: monitor.speeds.upload, color: .mint)
                 }
 
-                TrafficChartView(samples: monitor.samples(in: .fiveMinutes), compact: true)
-                    .frame(height: 82)
+                TrafficChartView(
+                    samples: monitor.samples(in: .fiveMinutes),
+                    range: .fiveMinutes,
+                    isPaused: monitor.isPaused,
+                    compact: true
+                )
+                    .frame(height: 68)
             }
-            .padding(16)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
 
             Divider()
 
-            VStack(spacing: 8) {
+            VStack(spacing: 2) {
                 Button {
                     openWindow(id: "dashboard")
                     NSApp.activate(ignoringOtherApps: true)
                 } label: {
-                    Label("Open Dashboard", systemImage: "rectangle.3.group")
+                    Text("Open Dashboard")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .menuActionRow()
 
                 SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
+                    Text("Settings")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .menuActionRow()
 
                 Button(action: AppActions.openActivityMonitor) {
-                    Label("Open Activity Monitor", systemImage: "waveform.path.ecg")
+                    Text("Open Activity Monitor")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .menuActionRow()
@@ -69,9 +84,9 @@ struct MenuContentView: View {
                 }
                 .menuActionRow()
             }
-            .padding(12)
+            .padding(8)
         }
-        .frame(width: 320)
+        .frame(width: 300)
     }
 }
 
@@ -83,17 +98,13 @@ private struct MenuActionRowModifier: ViewModifier {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .foregroundStyle(
-                isHovered
-                    ? Color(nsColor: .selectedMenuItemTextColor)
-                    : Color.primary
-            )
+            .padding(.vertical, 4)
+            .foregroundStyle(Color.primary)
             .background {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(
                         isHovered
-                            ? Color(nsColor: .selectedContentBackgroundColor)
+                            ? Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
                             : Color.clear
                     )
             }
@@ -114,13 +125,13 @@ private struct MenuSpeedValue: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 Circle().fill(color).frame(width: 6, height: 6)
                 Text(title).font(.caption).foregroundStyle(.secondary)
             }
             Text(speed.formatted)
-                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .font(.system(.headline, design: .rounded, weight: .semibold))
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
