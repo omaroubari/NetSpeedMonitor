@@ -45,26 +45,66 @@ struct MenuContentView: View {
                     Label("Open Dashboard", systemImage: "rectangle.3.group")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .menuActionRow()
 
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .menuActionRow()
 
                 Button(action: AppActions.openActivityMonitor) {
                     Label("Open Activity Monitor", systemImage: "waveform.path.ecg")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .menuActionRow()
 
                 Divider()
 
-                Button("Quit Network Pulse") { NSApplication.shared.terminate(nil) }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    Text("Quit Network Pulse")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .menuActionRow()
             }
-            .buttonStyle(.plain)
             .padding(12)
         }
         .frame(width: 320)
+    }
+}
+
+private struct MenuActionRowModifier: ViewModifier {
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .foregroundStyle(
+                isHovered
+                    ? Color(nsColor: .selectedMenuItemTextColor)
+                    : Color.primary
+            )
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(
+                        isHovered
+                            ? Color(nsColor: .selectedContentBackgroundColor)
+                            : Color.clear
+                    )
+            }
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+    }
+}
+
+private extension View {
+    func menuActionRow() -> some View {
+        modifier(MenuActionRowModifier())
     }
 }
 
