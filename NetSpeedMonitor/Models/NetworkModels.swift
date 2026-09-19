@@ -15,6 +15,8 @@ enum HistoryRange: Int, CaseIterable, Identifiable {
     case fiveMinutes = 5
     case fifteenMinutes = 15
     case oneHour = 60
+    case twentyFourHours = 1_440
+    case sevenDays = 10_080
 
     var id: Int { rawValue }
     var displayName: String {
@@ -22,6 +24,8 @@ enum HistoryRange: Int, CaseIterable, Identifiable {
         case .fiveMinutes: "5 min"
         case .fifteenMinutes: "15 min"
         case .oneHour: "1 hour"
+        case .twentyFourHours: "24 hours"
+        case .sevenDays: "7 days"
         }
     }
 
@@ -102,10 +106,19 @@ struct NetworkSample: Identifiable, Equatable {
     let date: Date
     let uploadBytesPerSecond: Double
     let downloadBytesPerSecond: Double
+    var interval: TimeInterval = 1
+    var uploadedBytes: Int64 = 0
+    var downloadedBytes: Int64 = 0
+    var peakUploadBytesPerSecond: Double = 0
+    var peakDownloadBytesPerSecond: Double = 0
+    var sampleCount: Int = 1
 }
 
 struct InterfaceReading: Identifiable, Equatable {
     let name: String
     let speeds: NetworkSpeeds
+    let receivedBytes: Int64
+    let sentBytes: Int64
+    let sampleDuration: TimeInterval
     var id: String { name }
 }

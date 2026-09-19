@@ -116,59 +116,6 @@ private struct OverviewView: View {
     }
 }
 
-private struct HistoryView: View {
-    @EnvironmentObject private var monitor: MenuBarState
-    @State private var range = HistoryRange.fifteenMinutes
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Traffic history")
-                            .font(.largeTitle.bold())
-                        Text("In-memory activity for the current session.")
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Picker("Range", selection: $range) {
-                        ForEach(HistoryRange.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 230)
-                }
-
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            TrafficLegend(isPaused: monitor.isPaused)
-                            Spacer()
-                            Text("\(monitor.samples(in: range).count) samples")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        TrafficChartView(
-                            samples: monitor.samples(in: range),
-                            range: range,
-                            isPaused: monitor.isPaused
-                        )
-                            .frame(minHeight: 320)
-                    }
-                    .padding(8)
-                }
-
-                HStack {
-                    Text("Session started \(monitor.sessionStarted, format: .dateTime.hour().minute())")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Clear History", role: .destructive) { monitor.clearSession() }
-                }
-            }
-            .padding(24)
-        }
-    }
-}
-
 private struct InterfacesView: View {
     @EnvironmentObject private var monitor: MenuBarState
 

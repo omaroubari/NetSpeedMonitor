@@ -4,6 +4,7 @@
 #include <net/if.h>
 #include <net/if_dl.h>
 #include <net/route.h>
+#include <set>
 #include <sys/sysctl.h>
 
 int NetTrafficStatGenerator::update() {
@@ -29,6 +30,7 @@ int NetTrafficStatGenerator::update() {
     uint8_t* const sysctl_buffer_ptr = sysctl_buffer.data();
     uint8_t* data_ptr_cur = sysctl_buffer_ptr;
     uint8_t* const data_ptr_end = sysctl_buffer_ptr + data_bytes;
+    std::set<std::string> observed_interface_names;
     while (data_ptr_cur < data_ptr_end) {
         // Expecting interface data
         if_msghdr* ifmsg = (struct if_msghdr*)data_ptr_cur;
@@ -53,6 +55,7 @@ int NetTrafficStatGenerator::update() {
             data_ptr_cur += ifmsg->ifm_msglen;
             continue;
         }
+        observed_interface_names.insert(interface_name);
 
         if (auto& net_traffic_stat = net_traffic_stat_map[interface_name]; //
             net_traffic_stat.is_valid() && (ifmsg->ifm_flags & IFF_UP)) {
@@ -104,6 +107,14 @@ int NetTrafficStatGenerator::update() {
 
         // Continue on
         data_ptr_cur += ifmsg->ifm_msglen;
+    }
+
+    for (auto iterator = net_traffic_stat_map.begin(); iterator != net_traffic_stat_map.end();) {
+        if (observed_interface_names.find(iterator->first) == observed_interface_names.end()) {
+            iterator = net_traffic_stat_map.erase(iterator);
+        } else {
+            ++iterator;
+        }
     }
 
     return 0;

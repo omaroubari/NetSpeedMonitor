@@ -46,6 +46,11 @@ private struct GeneralSettingsForm: View {
                         Text(name).tag(name)
                     }
                 }
+
+                Toggle("Save traffic history", isOn: $monitor.saveTrafficHistory)
+                Text("Keeps attributed traffic for seven days. Turning this off retains existing history until it expires or is deleted.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Startup") {

@@ -16,6 +16,9 @@ final class MenuBarState: ObservableObject {
     @AppStorage("NetSpeedUpdateInterval") var netSpeedUpdateInterval = NetSpeedUpdateInterval.oneSecond {
         didSet { restartTimer() }
     }
+    @AppStorage("SaveTrafficHistory") var saveTrafficHistory = true {
+        didSet { historyStore.setSavingEnabled(saveTrafficHistory) }
+    }
     @AppStorage("SelectedInterface") var selectedInterface = automaticInterface {
         didSet {
             hasReceivedBaseline = false
@@ -50,12 +53,15 @@ final class MenuBarState: ObservableObject {
     private var timer: Timer?
     private var activityAnimationTimer: Timer?
     private let netTrafficStat = NetTrafficStatReceiver()
+    private let historyStore: TrafficHistoryStore
     private var displayedUploadActivity = 0.0
     private var displayedDownloadActivity = 0.0
     private var hasReceivedBaseline = false
     private var lastSampleDate: Date?
 
-    init() {
+    init(historyStore: TrafficHistoryStore) {
+        self.historyStore = historyStore
+        historyStore.setSavingEnabled(saveTrafficHistory)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.autoLaunchEnabled = self.currentAutoLaunchStatus()
@@ -133,7 +139,10 @@ final class MenuBarState: ObservableObject {
                 speeds: NetworkSpeeds(
                     upload: NetworkSpeed(bytesPerSecond: stat.obytes_per_sec.doubleValue),
                     download: NetworkSpeed(bytesPerSecond: stat.ibytes_per_sec.doubleValue)
-                )
+                ),
+                receivedBytes: Int64(stat.delta_ibytes),
+                sentBytes: Int64(stat.delta_obytes),
+                sampleDuration: stat.delta_ts_sec.doubleValue
             )
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -156,6 +165,9 @@ final class MenuBarState: ObservableObject {
 
         speeds = nextSpeeds
         lastUpdated = Date()
+        if let lastUpdated {
+            historyStore.record(readings, at: lastUpdated)
+        }
         if hasReceivedBaseline {
             status = .monitoring
             record(nextSpeeds)

@@ -14,12 +14,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct NetSpeedMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var monitor = MenuBarState()
+    @StateObject private var historyStore: TrafficHistoryStore
+    @StateObject private var monitor: MenuBarState
+
+    init() {
+        let historyStore = TrafficHistoryStore()
+        _historyStore = StateObject(wrappedValue: historyStore)
+        _monitor = StateObject(wrappedValue: MenuBarState(historyStore: historyStore))
+    }
 
     var body: some Scene {
         WindowGroup("Network Pulse", id: "dashboard") {
             DashboardRootView()
                 .environmentObject(monitor)
+                .environmentObject(historyStore)
         }
         .defaultSize(width: 900, height: 650)
         .commands {
@@ -52,6 +60,7 @@ struct NetSpeedMonitorApp: App {
         Settings {
             SettingsView()
                 .environmentObject(monitor)
+                .environmentObject(historyStore)
         }
     }
 }
